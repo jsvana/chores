@@ -1,15 +1,28 @@
 use std::fs::read_to_string;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use anyhow::Result;
+use axum::body::Empty;
+use axum::body::Full;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::response::Response;
+use axum::routing::get;
+use axum::routing::get_service;
+use axum::Extension;
+use axum::Router;
 use chrono::Duration;
 use chrono::Local;
 use clap::Parser;
 use cron::Schedule;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::Acquire;
 use sqlx::SqlitePool;
+use tokio::try_join;
+use tower::ServiceExt;
+use tower_http::services::{ServeDir, ServeFile};
 
 #[derive(Deserialize, Debug)]
 struct Chore {
@@ -18,18 +31,22 @@ struct Chore {
     frequency: String,
 }
 
-const ONE_DAY: StdDuration = StdDuration::from_secs(86400);
 const fn one_day() -> StdDuration {
-    ONE_DAY
+    StdDuration::from_secs(86400)
 }
 
-const ONE_HOUR: StdDuration = StdDuration::from_secs(3600);
 const fn one_hour() -> StdDuration {
-    ONE_HOUR
+    StdDuration::from_secs(3600)
+}
+
+const fn default_port() -> u16 {
+    4040
 }
 
 #[derive(Deserialize, Debug)]
 struct Config {
+    #[serde(default = "default_port")]
+    port: u16,
     chores: Vec<Chore>,
     #[serde(with = "humantime_serde")]
     overdue_time: StdDuration,
@@ -130,8 +147,79 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
     }
 }
 
+async fn static_path(route: &str) -> impl IntoResponse {
+    todo!();
+    /*
+    let path = match SIMPLE_PATHS.get(route) {
+        Some(path) => path,
+        None => {
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(body::boxed(Empty::new()))
+                .unwrap();
+        }
+    };
+
+    let mime_type = mime_guess::from_path(path).first_or_text_plain();
+
+    match read_to_string(path) {
+        Ok(contents) => Response::builder()
+            .status(StatusCode::OK)
+            .header(
+                header::CONTENT_TYPE,
+                HeaderValue::from_str(mime_type.as_ref()).unwrap(),
+            )
+            .body(body::boxed(Full::from(contents)))
+            .unwrap(),
+        Err(e) => Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(body::boxed(Full::from(format!(
+                "Error fetching path: {}",
+                e
+            ))))
+            .unwrap(),
+    }
+    */
+}
+
+async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
+    (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
+}
+
+async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
+    let serve_dir = get_service(ServeDir::new("dist")).handle_error(handle_error);
+
+    let app = Router::new()
+        .route("/", get(|| async { "Hi from /" }))
+        .nest("/dist", serve_dir.clone())
+        /*
+        .route(
+            "/css/foundation.min.css",
+            get(|| async { static_path("/css/foundation.min.css").await }),
+        )
+        .route("/for_name", get(for_name))
+        .route("/weights", get(weights))
+        .route("/weights_pretty", get(weights_pretty))
+        */
+        .layer(Extension(config.clone()));
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    tracing::debug!("listening on {}", addr);
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_panic(info);
+        std::process::exit(1);
+    }));
+
     let args = Args::parse();
 
     let config = Config::from_path(&args.config_path)?;
@@ -141,7 +229,10 @@ async fn main() -> Result<()> {
     let pool = Arc::new(SqlitePool::connect(&std::env::var("DATABASE_URL")?).await?);
     sqlx::migrate!().run(&*pool).await?;
 
-    tokio::spawn(update_chores(pool.clone(), config.clone()));
+    try_join!(
+        update_chores(pool.clone(), config.clone()),
+        serve(pool.clone(), config.clone()),
+    )?;
 
-    loop {}
+    Ok(())
 }
