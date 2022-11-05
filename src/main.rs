@@ -6,9 +6,11 @@ use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use anyhow::{anyhow, Result};
+use axum::body;
+use axum::body::Full;
 use axum::extract::Query;
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, get_service};
 use axum::{Extension, Json, Router};
 use chrono::{Duration, Local};
@@ -18,6 +20,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Acquire, Row, SqlitePool};
 use tokio::try_join;
 use tower_http::services::ServeDir;
+
+const INDEX_PATH: &'static str = "./assets/html/index.html";
 
 #[derive(Deserialize, Debug)]
 struct Chore {
@@ -289,11 +293,33 @@ async fn list_chores(
     }
 }
 
+async fn index() -> impl IntoResponse {
+    let mime_type = mime_guess::from_path(INDEX_PATH).first_or_text_plain();
+
+    match read_to_string(INDEX_PATH) {
+        Ok(contents) => Response::builder()
+            .status(StatusCode::OK)
+            .header(
+                header::CONTENT_TYPE,
+                HeaderValue::from_str(mime_type.as_ref()).unwrap(),
+            )
+            .body(body::boxed(Full::from(contents)))
+            .unwrap(),
+        Err(e) => Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(body::boxed(Full::from(format!(
+                "Error fetching path: {}",
+                e
+            ))))
+            .unwrap(),
+    }
+}
+
 async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
     let serve_dir = get_service(ServeDir::new("dist")).handle_error(handle_error);
 
     let app = Router::new()
-        .route("/", get(|| async { "Hi from /" }))
+        .route("/", get(index))
         .nest("/dist", serve_dir.clone())
         .route("/api/chores", get(list_chores))
         .layer(Extension(pool))

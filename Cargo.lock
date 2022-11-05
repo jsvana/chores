@@ -193,6 +193,7 @@ dependencies = [
  "clap",
  "cron",
  "humantime-serde",
+ "mime_guess",
  "serde",
  "serde_json",
  "sqlx",
