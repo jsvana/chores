@@ -1,32 +1,26 @@
+use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
-use anyhow::Result;
-use axum::body::Empty;
-use axum::body::Full;
+use anyhow::{anyhow, Result};
+use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::response::Response;
-use axum::routing::get;
-use axum::routing::get_service;
-use axum::Extension;
-use axum::Router;
-use chrono::Duration;
-use chrono::Local;
+use axum::routing::{get, get_service};
+use axum::{Extension, Json, Router};
+use chrono::{Duration, Local};
 use clap::Parser;
 use cron::Schedule;
-use serde::Deserialize;
-use sqlx::Acquire;
-use sqlx::SqlitePool;
+use serde::{Deserialize, Serialize};
+use sqlx::{Acquire, Row, SqlitePool};
 use tokio::try_join;
-use tower::ServiceExt;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
 
 #[derive(Deserialize, Debug)]
 struct Chore {
-    title: String,
     description: String,
     frequency: String,
 }
@@ -47,7 +41,7 @@ const fn default_port() -> u16 {
 struct Config {
     #[serde(default = "default_port")]
     port: u16,
-    chores: Vec<Chore>,
+    chores: HashMap<String, Chore>,
     #[serde(with = "humantime_serde")]
     overdue_time: StdDuration,
     #[serde(with = "humantime_serde", default = "one_day")]
@@ -68,10 +62,6 @@ impl Config {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Port to bind to
-    #[arg(short, long, default_value_t = 4040)]
-    port: u16,
-
     /// Config file to load from
     #[arg(long, default_value = "config.json")]
     config_path: String,
@@ -101,8 +91,8 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
         .execute(&mut txn)
         .await?;
 
-        for chore in config.chores.iter() {
-            let chore_title = chore.title.clone();
+        for (title, chore) in config.chores.iter() {
+            let chore_title = title.to_string();
 
             let schedule: Schedule = chore.frequency.parse()?;
             for next_time in schedule.upcoming(Local) {
@@ -147,43 +137,156 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
     }
 }
 
-async fn static_path(route: &str) -> impl IntoResponse {
-    todo!();
-    /*
-    let path = match SIMPLE_PATHS.get(route) {
-        Some(path) => path,
-        None => {
-            return Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(body::boxed(Empty::new()))
-                .unwrap();
-        }
-    };
-
-    let mime_type = mime_guess::from_path(path).first_or_text_plain();
-
-    match read_to_string(path) {
-        Ok(contents) => Response::builder()
-            .status(StatusCode::OK)
-            .header(
-                header::CONTENT_TYPE,
-                HeaderValue::from_str(mime_type.as_ref()).unwrap(),
-            )
-            .body(body::boxed(Full::from(contents)))
-            .unwrap(),
-        Err(e) => Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(body::boxed(Full::from(format!(
-                "Error fetching path: {}",
-                e
-            ))))
-            .unwrap(),
-    }
-    */
-}
-
 async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
     (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all(serialize = "lowercase", deserialize = "lowercase"))]
+enum Status {
+    Assigned,
+    Completed,
+    Missed,
+}
+
+impl FromStr for Status {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "assigned" => Ok(Status::Assigned),
+            "completed" => Ok(Status::Completed),
+            "missed" => Ok(Status::Missed),
+            _ => Err(anyhow!("Unknown status \"{}\"", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone)]
+struct ApiChore {
+    title: String,
+    description: String,
+    expected_completion_time: i32,
+    overdue: bool,
+    status: Status,
+}
+
+#[derive(Serialize, Debug, Clone)]
+struct ApiListChoresResponse {
+    success: bool,
+    error: Option<String>,
+    chores: Vec<ApiChore>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListChoresParams {
+    lookback_days: Option<i64>,
+}
+
+async fn list_chores_impl(
+    params: ListChoresParams,
+    pool: Arc<SqlitePool>,
+    config: Arc<Config>,
+) -> Result<Vec<ApiChore>> {
+    let lookback_days = params.lookback_days.unwrap_or(1);
+    if lookback_days < 1 {
+        return Err(anyhow!("Refusing to look back less than one day"));
+    }
+    let lookback_timestamp = (Local::now() - Duration::days(lookback_days)).timestamp();
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            `title`,
+            CAST(`expected_completion_time` AS INTEGER) AS `expected_completion_time`,
+            STRFTIME('%s', 'now', 'localtime') > `overdue_time` AS `overdue`,
+            `status`
+        FROM `chores`
+        WHERE CAST(`expected_completion_time` AS INTEGER) > ?1
+        ORDER BY `expected_completion_time` ASC
+        "#,
+    )
+    .bind(lookback_timestamp)
+    .fetch_all(&*pool)
+    .await?;
+
+    let mut return_chores = Vec::new();
+    for row in rows {
+        let title = match row.try_get("title") {
+            Ok(title) => title,
+            Err(_) => {
+                tracing::warn!("Chore missing title");
+                continue;
+            }
+        };
+
+        let description = match config.chores.get(&title) {
+            Some(c) => c.description.clone(),
+            None => {
+                tracing::warn!("Chore \"{}\" not found in config", title);
+                continue;
+            }
+        };
+
+        let expected_completion_time = match row.try_get("expected_completion_time") {
+            Ok(time) => time,
+            Err(_) => {
+                tracing::warn!("No expected completion time found for chore \"{}\"", title);
+                continue;
+            }
+        };
+
+        let overdue = match row.try_get::<i32, &str>("overdue") {
+            Ok(overdue) => overdue == 1,
+            Err(_) => {
+                tracing::warn!("No overdue information found for chore \"{}\"", title);
+                continue;
+            }
+        };
+
+        let status = match row.try_get::<&str, &str>("status") {
+            Ok(status_str) => match status_str.parse::<Status>() {
+                Ok(status) => status,
+                Err(_) => {
+                    tracing::warn!("Unknown status \"{}\" for chore \"{}\"", status_str, title);
+                    continue;
+                }
+            },
+            Err(_) => {
+                tracing::warn!("No status found for chore \"{}\"", title);
+                continue;
+            }
+        };
+
+        return_chores.push(ApiChore {
+            title: title,
+            description,
+            expected_completion_time,
+            overdue,
+            status,
+        });
+    }
+
+    Ok(return_chores)
+}
+
+async fn list_chores(
+    Query(params): Query<ListChoresParams>,
+    Extension(pool): Extension<Arc<SqlitePool>>,
+    Extension(config): Extension<Arc<Config>>,
+) -> Json<ApiListChoresResponse> {
+    match list_chores_impl(params, pool, config).await {
+        Ok(chores) => Json(ApiListChoresResponse {
+            success: true,
+            chores,
+            error: None,
+        }),
+        Err(e) => Json(ApiListChoresResponse {
+            success: false,
+            chores: Vec::new(),
+            error: Some(format!("failed to fetch chores: {}", e)),
+        }),
+    }
 }
 
 async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
@@ -192,15 +295,8 @@ async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
     let app = Router::new()
         .route("/", get(|| async { "Hi from /" }))
         .nest("/dist", serve_dir.clone())
-        /*
-        .route(
-            "/css/foundation.min.css",
-            get(|| async { static_path("/css/foundation.min.css").await }),
-        )
-        .route("/for_name", get(for_name))
-        .route("/weights", get(weights))
-        .route("/weights_pretty", get(weights_pretty))
-        */
+        .route("/api/chores", get(list_chores))
+        .layer(Extension(pool))
         .layer(Extension(config.clone()));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));

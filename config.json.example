@@ -1,20 +1,17 @@
 {
-  "chores": [
-    {
-      "title": "Feed dogs",
+  "chores": {
+    "Feed dogs": {
       "description": "todo",
       "frequency": "0 0 9,21 * * * *"
     },
-    {
-      "title": "Feed cats",
+    "Feed cats": {
       "description": "",
       "frequency": "0 0 20 * * * *"
     },
-    {
-      "title": "Clean catboxes",
+    "Clean catboxes": {
       "description": "asdf",
       "frequency": "0 0 9 */3 * * *"
     }
-  ],
+  },
   "overdue_time": "4h"
 }
