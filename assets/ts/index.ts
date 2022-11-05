@@ -1,9 +1,23 @@
-const fetchChores = async (): Promise<any> => {
+type Chore = {
+  title: string;
+  description: string;
+  expected_completion_time: number;
+  overdue: boolean;
+  status: string;
+};
+
+type ListChoresResponse = {
+  success: boolean;
+  error?: string;
+  chores: Chore[];
+};
+
+const fetchChores = async (): Promise<Chore[]> => {
   let response = await fetch("/api/chores");
   return (await response.json()).chores;
 }
 
-const createChoreCard = (chore: any): Node => {
+const createChoreCard = (chore: Chore): Node => {
   console.log(chore);
   let card = document.createElement("div");
   card.classList.add("card");
