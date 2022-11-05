@@ -4,7 +4,6 @@ const fetchChores = async () => {
     return (await response.json()).chores;
 };
 const createChoreCard = (chore) => {
-    console.log(chore);
     let card = document.createElement("div");
     card.classList.add("card");
     let cardDivider = document.createElement("div");
@@ -39,16 +38,25 @@ const createChoreCard = (chore) => {
     card.appendChild(cardContent);
     return card;
 };
+const removeAllChildren = (parent) => {
+    while (parent.firstChild) {
+        parent.removeChild(parent.firstChild);
+    }
+};
 const setChores = async () => {
     let chores = await fetchChores();
     let choresNode = document.querySelector("#chores");
     if (choresNode === null) {
         return;
     }
+    removeAllChildren(choresNode);
     for (let chore of chores) {
         choresNode.appendChild(createChoreCard(chore));
     }
 };
-(async () => {
+const updateChores = async () => {
+    console.log("call");
     await setChores();
-})();
+    setTimeout(updateChores, 10000);
+};
+updateChores();

@@ -18,7 +18,6 @@ const fetchChores = async (): Promise<Chore[]> => {
 }
 
 const createChoreCard = (chore: Chore): Node => {
-  console.log(chore);
   let card = document.createElement("div");
   card.classList.add("card");
 
@@ -62,6 +61,12 @@ const createChoreCard = (chore: Chore): Node => {
   return card;
 }
 
+const removeAllChildren = (parent: Node): void => {
+    while (parent.firstChild) {
+        parent.removeChild(parent.firstChild);
+    }
+}
+
 const setChores = async (): Promise<void> => {
   let chores = await fetchChores();
 
@@ -70,11 +75,18 @@ const setChores = async (): Promise<void> => {
     return;
   }
 
+  removeAllChildren(choresNode);
+
   for (let chore of chores) {
     choresNode.appendChild(createChoreCard(chore));
   }
 }
 
-(async () => {
+const updateChores = async (): Promise<void> => {
+  console.log("call");
   await setChores();
-})();
+
+  setTimeout(updateChores, 10000);
+}
+
+updateChores();
