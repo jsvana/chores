@@ -8,10 +8,10 @@ use std::time::Duration as StdDuration;
 use anyhow::{anyhow, Result};
 use axum::body;
 use axum::body::Full;
-use axum::extract::Query;
+use axum::extract::{Form, Query};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, get_service};
+use axum::routing::{get, get_service, post};
 use axum::{Extension, Json, Router};
 use chrono::{Duration, Local};
 use clap::Parser;
@@ -176,7 +176,7 @@ struct ApiChore {
 }
 
 #[derive(Serialize, Debug, Clone)]
-struct ApiListChoresResponse {
+struct ListChoresResponse {
     success: bool,
     error: Option<String>,
     chores: Vec<ApiChore>,
@@ -196,6 +196,7 @@ async fn list_chores_impl(
     if lookback_days < 1 {
         return Err(anyhow!("Refusing to look back less than one day"));
     }
+
     let lookback_timestamp = (Local::now() - Duration::days(lookback_days)).timestamp();
 
     let rows = sqlx::query(
@@ -278,17 +279,69 @@ async fn list_chores(
     Query(params): Query<ListChoresParams>,
     Extension(pool): Extension<Arc<SqlitePool>>,
     Extension(config): Extension<Arc<Config>>,
-) -> Json<ApiListChoresResponse> {
+) -> Json<ListChoresResponse> {
     match list_chores_impl(params, pool, config).await {
-        Ok(chores) => Json(ApiListChoresResponse {
+        Ok(chores) => Json(ListChoresResponse {
             success: true,
             chores,
             error: None,
         }),
-        Err(e) => Json(ApiListChoresResponse {
+        Err(e) => Json(ListChoresResponse {
             success: false,
             chores: Vec::new(),
             error: Some(format!("failed to fetch chores: {}", e)),
+        }),
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct CompleteChoreParams {
+    title: String,
+    expected_completion_time: i32,
+}
+
+#[derive(Serialize, Debug)]
+struct CompleteChoreResponse {
+    success: bool,
+    error: Option<String>,
+}
+
+async fn complete_chore_impl(
+    params: CompleteChoreParams,
+    pool: Arc<SqlitePool>,
+    _config: Arc<Config>,
+) -> Result<()> {
+    sqlx::query!(
+        r#"
+        UPDATE `chores`
+        SET
+            `status` = 'completed'
+        WHERE
+            `title` = ?1
+            AND `expected_completion_time` = ?2
+        "#,
+        params.title,
+        params.expected_completion_time,
+    )
+    .execute(&*pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn complete_chore(
+    Form(params): Form<CompleteChoreParams>,
+    Extension(pool): Extension<Arc<SqlitePool>>,
+    Extension(config): Extension<Arc<Config>>,
+) -> Json<CompleteChoreResponse> {
+    match complete_chore_impl(params, pool, config).await {
+        Ok(()) => Json(CompleteChoreResponse {
+            success: true,
+            error: None,
+        }),
+        Err(e) => Json(CompleteChoreResponse {
+            success: false,
+            error: Some(format!("failed to mark chore as completed: {}", e)),
         }),
     }
 }
@@ -322,6 +375,7 @@ async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
         .route("/", get(index))
         .nest("/dist", serve_dir.clone())
         .route("/api/chores", get(list_chores))
+        .route("/api/chores/complete", post(complete_chore))
         .layer(Extension(pool))
         .layer(Extension(config.clone()));
 

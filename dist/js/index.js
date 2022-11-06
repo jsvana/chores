@@ -35,6 +35,23 @@ const createChoreCard = (chore) => {
     let expectedTime = document.createElement("p");
     expectedTime.textContent = expectedDate.toLocaleString();
     cardContent.appendChild(expectedTime);
+    if (chore.status === "assigned") {
+        let completeButton = document.createElement("button");
+        completeButton.type = "button";
+        completeButton.classList.add("button");
+        completeButton.classList.add("success");
+        completeButton.textContent = "Mark Completed";
+        completeButton.onclick = async () => {
+            const data = new URLSearchParams();
+            data.append("title", chore.title);
+            data.append("expected_completion_time", chore.expected_completion_time.toString());
+            await fetch("/api/chores/complete", {
+                method: "POST",
+                body: data,
+            });
+        };
+        cardContent.appendChild(completeButton);
+    }
     card.appendChild(cardContent);
     return card;
 };
@@ -55,7 +72,6 @@ const setChores = async () => {
     }
 };
 const updateChores = async () => {
-    console.log("call");
     await setChores();
     setTimeout(updateChores, 10000);
 };

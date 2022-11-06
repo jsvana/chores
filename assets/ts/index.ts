@@ -56,6 +56,27 @@ const createChoreCard = (chore: Chore): Node => {
   expectedTime.textContent = expectedDate.toLocaleString();
   cardContent.appendChild(expectedTime);
 
+  if (chore.status === "assigned") {
+    let completeButton = document.createElement("button");
+    completeButton.type = "button";
+    completeButton.classList.add("button");
+    completeButton.classList.add("success");
+    completeButton.textContent = "Mark Completed";
+
+    completeButton.onclick = async (): Promise<void> => {
+      const data = new URLSearchParams();
+      data.append("title", chore.title);
+      data.append("expected_completion_time", chore.expected_completion_time.toString());
+
+      await fetch("/api/chores/complete", {
+        method: "POST",
+        body: data,
+      });
+    };
+
+    cardContent.appendChild(completeButton);
+  }
+
   card.appendChild(cardContent);
 
   return card;
@@ -83,7 +104,6 @@ const setChores = async (): Promise<void> => {
 }
 
 const updateChores = async (): Promise<void> => {
-  console.log("call");
   await setChores();
 
   setTimeout(updateChores, 10000);
