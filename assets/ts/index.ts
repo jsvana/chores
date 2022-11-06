@@ -70,6 +70,8 @@ const createChoreCard = (chore: Chore): Node => {
     completeButton.type = "button";
     completeButton.classList.add("button");
     completeButton.classList.add("success");
+    completeButton.classList.add("expanded");
+    completeButton.classList.add("large");
     completeButton.textContent = "Mark Completed";
 
     completeButton.onclick = async (): Promise<void> => {
@@ -107,7 +109,7 @@ const setChores = async (): Promise<void> => {
   let chores = await fetchChores();
 
   let choresNode = document.querySelector("#chores");
-  if (choresNode === null) {
+  if (choresNode == null) {
     return;
   }
 

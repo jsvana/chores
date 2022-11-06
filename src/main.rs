@@ -13,7 +13,7 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, get_service, post};
 use axum::{Extension, Json, Router};
-use chrono::{Duration, Local};
+use chrono::{Duration, Local, TimeZone};
 use clap::Parser;
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
@@ -82,11 +82,31 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
 
         let mut added_chores = 0;
 
+        let row = sqlx::query(
+            r#"
+            SELECT
+                CAST(`update_timestamp` AS INTEGER) AS `update_timestamp`
+            FROM `updates`
+            ORDER BY `update_timestamp` DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(&mut txn)
+        .await?;
+
+        let last_update = match row {
+            Some(row) => row
+                .try_get("update_timestamp")
+                .ok()
+                .unwrap_or(now.timestamp()),
+            None => now.timestamp(),
+        };
+        let last_update_date = Local.timestamp(last_update, 0);
+
         sqlx::query!(
             r#"
             UPDATE `chores`
-            SET
-                `status` = 'missed'
+            SET `status` = 'missed'
             WHERE
                 `expected_completion_time` < STRFTIME('%s', 'now', 'localtime')
                 AND `status` = 'assigned'
@@ -99,7 +119,7 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
             let chore_title = title.to_string();
 
             let schedule: Schedule = chore.frequency.parse()?;
-            for next_time in schedule.upcoming(Local) {
+            for next_time in schedule.after(&last_update_date) {
                 if next_time > lookahead {
                     break;
                 }
@@ -132,6 +152,22 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
                 .await?;
             }
         }
+
+        sqlx::query!(
+            r#"
+            INSERT INTO `updates`
+            (
+                `update_timestamp`
+            )
+            VALUES
+            (
+                ?1
+            )
+            "#,
+            last_update,
+        )
+        .execute(&mut txn)
+        .await?;
 
         txn.commit().await?;
 

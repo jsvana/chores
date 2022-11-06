@@ -51,6 +51,8 @@ const createChoreCard = (chore) => {
         completeButton.type = "button";
         completeButton.classList.add("button");
         completeButton.classList.add("success");
+        completeButton.classList.add("expanded");
+        completeButton.classList.add("large");
         completeButton.textContent = "Mark Completed";
         completeButton.onclick = async () => {
             const data = new URLSearchParams();
