@@ -18,16 +18,30 @@ const fetchChores = async (): Promise<Chore[]> => {
 }
 
 const createChoreCard = (chore: Chore): Node => {
+  let cell = document.createElement("div");
+  cell.classList.add("cell");
+  cell.classList.add("large-auto");
+
   let card = document.createElement("div");
   card.classList.add("card");
 
   let cardDivider = document.createElement("div");
   cardDivider.classList.add("card-divider");
   let title = document.createElement("h2");
-  if (chore.status === "completed") {
+  if (chore.status === "completed" || chore.status === "missed") {
     let struckOut = document.createElement("s");
     struckOut.textContent = chore.title;
     title.appendChild(struckOut);
+
+    if (chore.status === "missed") {
+      let missed = document.createElement("span");
+      missed.classList.add("label");
+      missed.classList.add("alert");
+      missed.textContent = "MISSED";
+      missed.style.fontSize = "1em";
+
+      title.appendChild(missed);
+    }
   } else {
     title.textContent = chore.title;
 
@@ -79,7 +93,9 @@ const createChoreCard = (chore: Chore): Node => {
 
   card.appendChild(cardContent);
 
-  return card;
+  cell.appendChild(card);
+
+  return cell;
 }
 
 const removeAllChildren = (parent: Node): void => {
