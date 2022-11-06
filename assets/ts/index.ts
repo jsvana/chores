@@ -61,14 +61,16 @@ const createChoreCard = (chore: Chore): Node => {
 
   let cardContent = document.createElement("div");
 
+  let expectedDate = new Date(chore.expected_completion_time * 1000);
+  let expectedTime = document.createElement("p");
+  let expectedTimeBold = document.createElement("strong");
+  expectedTimeBold.textContent = "Due date: " + expectedDate.toLocaleString();
+  expectedTime.appendChild(expectedTimeBold);
+  cardContent.appendChild(expectedTime);
+
   let description = document.createElement("p");
   description.textContent = chore.description;
   cardContent.appendChild(description);
-
-  let expectedDate = new Date(chore.expected_completion_time * 1000);
-  let expectedTime = document.createElement("p");
-  expectedTime.textContent = expectedDate.toLocaleString();
-  cardContent.appendChild(expectedTime);
 
   if (chore.status === "assigned") {
     let completeButton = document.createElement("button");
@@ -104,6 +106,8 @@ const removeAllChildren = (parent: Node): void => {
     }
 }
 
+const CHORE_FINAL_STATES = ["completed", "missed"];
+
 const setChores = async (): Promise<void> => {
   let chores = await fetchChores();
 
@@ -111,6 +115,18 @@ const setChores = async (): Promise<void> => {
   if (choresNode === null) {
     return;
   }
+
+  chores.sort((a: Chore, b: Chore): number => {
+    if (CHORE_FINAL_STATES.includes(a.status) && b.status === "assigned") {
+      return 1;
+    }
+
+    if (CHORE_FINAL_STATES.includes(b.status) && a.status === "assigned") {
+      return -1;
+    }
+
+    return b.expected_completion_time - a.expected_completion_time;
+  });
 
   removeAllChildren(choresNode);
 
