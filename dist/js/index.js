@@ -11,34 +11,32 @@ const createChoreCard = (chore) => {
     card.classList.add("card");
     let cardDivider = document.createElement("div");
     cardDivider.classList.add("card-divider");
+    cardDivider.classList.add("callout");
+    if (chore.status === "completed") {
+        cardDivider.classList.add("success");
+    }
+    else if (chore.status === "missed") {
+        cardDivider.classList.add("alert");
+    }
+    else if (chore.overdue) {
+        cardDivider.classList.add("warning");
+    }
+    else {
+        cardDivider.classList.add("primary");
+    }
     let title = document.createElement("h2");
     if (chore.status === "completed" || chore.status === "missed") {
         let struckOut = document.createElement("s");
         struckOut.textContent = chore.title;
         title.appendChild(struckOut);
-        if (chore.status === "missed") {
-            let missed = document.createElement("span");
-            missed.classList.add("label");
-            missed.classList.add("alert");
-            missed.textContent = "MISSED";
-            missed.style.fontSize = "1em";
-            title.appendChild(missed);
-        }
     }
     else {
         title.textContent = chore.title;
-        if (chore.overdue) {
-            let overdue = document.createElement("span");
-            overdue.classList.add("label");
-            overdue.classList.add("warning");
-            overdue.textContent = "OVERDUE";
-            overdue.style.fontSize = "1em";
-            title.appendChild(overdue);
-        }
     }
     cardDivider.appendChild(title);
     card.appendChild(cardDivider);
     let cardContent = document.createElement("div");
+    cardContent.classList.add("card-section");
     let expectedDate = new Date(chore.expected_completion_time * 1000);
     let expectedTime = document.createElement("p");
     let expectedTimeBold = document.createElement("strong");
@@ -62,6 +60,7 @@ const createChoreCard = (chore) => {
                 method: "POST",
                 body: data,
             });
+            await setChores();
         };
         cardContent.appendChild(completeButton);
     }
@@ -88,7 +87,7 @@ const setChores = async () => {
         if (CHORE_FINAL_STATES.includes(b.status) && a.status === "assigned") {
             return -1;
         }
-        return b.expected_completion_time - a.expected_completion_time;
+        return a.expected_completion_time - b.expected_completion_time;
     });
     removeAllChildren(choresNode);
     for (let chore of chores) {
