@@ -108,7 +108,7 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
             UPDATE `chores`
             SET `status` = 'missed'
             WHERE
-                `expected_completion_time` < STRFTIME('%s', 'now', 'localtime')
+                CAST(`expected_completion_time` AS INTEGER) < STRFTIME('%s', 'now')
                 AND `status` = 'assigned'
             "#,
         )
@@ -249,8 +249,8 @@ async fn list_chores_impl(
         SELECT
             `title`,
             CAST(`expected_completion_time` AS INTEGER) AS `expected_completion_time`,
-            STRFTIME('%s', 'now', 'localtime') < `expected_completion_time` AS `upcoming`,
-            STRFTIME('%s', 'now', 'localtime') > `overdue_time` AS `overdue`,
+            STRFTIME('%s', 'now') < CAST(`expected_completion_time` AS INTEGER) AS `upcoming`,
+            STRFTIME('%s', 'now') > CAST(`overdue_time` AS INTEGER) AS `overdue`,
             `status`
         FROM `chores`
         WHERE CAST(`expected_completion_time` AS INTEGER) > ?1
