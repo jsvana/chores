@@ -37,6 +37,13 @@ const createChoreCard = (chore) => {
     card.appendChild(cardDivider);
     let cardContent = document.createElement("div");
     cardContent.classList.add("card-section");
+    let choreStatusText = "Status: " + chore.status;
+    if (chore.overdue) {
+        choreStatusText += " (overdue)";
+    }
+    let choreStatus = document.createElement("p");
+    choreStatus.textContent = choreStatusText;
+    cardContent.appendChild(choreStatus);
     let expectedDate = new Date(chore.expected_completion_time * 1000);
     let expectedTime = document.createElement("p");
     let expectedTimeBold = document.createElement("strong");
@@ -79,7 +86,7 @@ const CHORE_FINAL_STATES = ["completed", "missed"];
 const setChores = async () => {
     let chores = await fetchChores();
     let choresNode = document.querySelector("#chores");
-    if (choresNode === null) {
+    if (choresNode == null) {
         return;
     }
     chores.sort((a, b) => {

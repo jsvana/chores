@@ -54,6 +54,16 @@ const createChoreCard = (chore: Chore): Node => {
   let cardContent = document.createElement("div");
   cardContent.classList.add("card-section");
 
+  let choreStatusText = "Status: " + chore.status;
+  if (chore.overdue) {
+    choreStatusText += " (overdue)";
+  }
+
+  let choreStatus = document.createElement("p");
+  choreStatus.textContent = choreStatusText;
+
+  cardContent.appendChild(choreStatus);
+
   let expectedDate = new Date(chore.expected_completion_time * 1000);
   let expectedTime = document.createElement("p");
   let expectedTimeBold = document.createElement("strong");
