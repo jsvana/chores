@@ -2,7 +2,6 @@ type Chore = {
   title: string;
   description: string;
   expected_completion_time: number;
-  overdue: boolean;
   status: string;
 };
 
@@ -31,9 +30,11 @@ const createChoreCard = (chore: Chore): Node => {
   cardDivider.classList.add("callout");
   if (chore.status === "completed") {
     cardDivider.classList.add("success");
+  } else if (chore.status === "upcoming") {
+    cardDivider.classList.add("secondary");
   } else if (chore.status === "missed") {
     cardDivider.classList.add("alert");
-  } else if (chore.overdue) {
+  } else if (chore.status === "overdue") {
     cardDivider.classList.add("warning");
   } else {
     cardDivider.classList.add("primary");
@@ -55,9 +56,6 @@ const createChoreCard = (chore: Chore): Node => {
   cardContent.classList.add("card-section");
 
   let choreStatusText = "Status: " + chore.status;
-  if (chore.overdue) {
-    choreStatusText += " (overdue)";
-  }
 
   let choreStatus = document.createElement("p");
   choreStatus.textContent = choreStatusText;
@@ -137,8 +135,26 @@ const setChores = async (): Promise<void> => {
 
   removeAllChildren(choresNode);
 
+  let counts: Map<string, number> = new Map([
+    ["assigned", 0],
+    ["upcoming", 0],
+    ["overdue", 0],
+    ["missed", 0],
+    ["completed", 0],
+  ]);
+
   for (let chore of chores) {
     choresNode.appendChild(createChoreCard(chore));
+    counts.set(chore.status, (counts.get(chore.status) ?? 0) + 1);
+  }
+
+  for (let [key, value] of counts) {
+    let countSpan = document.querySelector("#" + key + "-chores");
+    if (countSpan == null) {
+      return;
+    }
+
+    countSpan.textContent = value + " " + key;
   }
 }
 

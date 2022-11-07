@@ -15,10 +15,13 @@ const createChoreCard = (chore) => {
     if (chore.status === "completed") {
         cardDivider.classList.add("success");
     }
+    else if (chore.status === "upcoming") {
+        cardDivider.classList.add("secondary");
+    }
     else if (chore.status === "missed") {
         cardDivider.classList.add("alert");
     }
-    else if (chore.overdue) {
+    else if (chore.status === "overdue") {
         cardDivider.classList.add("warning");
     }
     else {
@@ -38,9 +41,6 @@ const createChoreCard = (chore) => {
     let cardContent = document.createElement("div");
     cardContent.classList.add("card-section");
     let choreStatusText = "Status: " + chore.status;
-    if (chore.overdue) {
-        choreStatusText += " (overdue)";
-    }
     let choreStatus = document.createElement("p");
     choreStatus.textContent = choreStatusText;
     cardContent.appendChild(choreStatus);
@@ -84,6 +84,7 @@ const removeAllChildren = (parent) => {
 };
 const CHORE_FINAL_STATES = ["completed", "missed"];
 const setChores = async () => {
+    var _a;
     let chores = await fetchChores();
     let choresNode = document.querySelector("#chores");
     if (choresNode == null) {
@@ -99,8 +100,23 @@ const setChores = async () => {
         return a.expected_completion_time - b.expected_completion_time;
     });
     removeAllChildren(choresNode);
+    let counts = new Map([
+        ["assigned", 0],
+        ["upcoming", 0],
+        ["overdue", 0],
+        ["missed", 0],
+        ["completed", 0],
+    ]);
     for (let chore of chores) {
         choresNode.appendChild(createChoreCard(chore));
+        counts.set(chore.status, ((_a = counts.get(chore.status)) !== null && _a !== void 0 ? _a : 0) + 1);
+    }
+    for (let [key, value] of counts) {
+        let countSpan = document.querySelector("#" + key + "-chores");
+        if (countSpan == null) {
+            return;
+        }
+        countSpan.textContent = value + " " + key;
     }
 };
 const updateChores = async () => {

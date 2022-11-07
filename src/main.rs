@@ -155,7 +155,7 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
 
         sqlx::query!(
             r#"
-            INSERT INTO `updates`
+            INSERT OR IGNORE INTO `updates`
             (
                 `update_timestamp`
             )
@@ -203,12 +203,21 @@ impl FromStr for Status {
 }
 
 #[derive(Serialize, Debug, Clone)]
+#[serde(rename_all(serialize = "lowercase", deserialize = "lowercase"))]
+enum ApiStatus {
+    Upcoming,
+    Assigned,
+    Overdue,
+    Completed,
+    Missed,
+}
+
+#[derive(Serialize, Debug, Clone)]
 struct ApiChore {
     title: String,
     description: String,
     expected_completion_time: i32,
-    overdue: bool,
-    status: Status,
+    status: ApiStatus,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -240,6 +249,7 @@ async fn list_chores_impl(
         SELECT
             `title`,
             CAST(`expected_completion_time` AS INTEGER) AS `expected_completion_time`,
+            STRFTIME('%s', 'now', 'localtime') < `expected_completion_time` AS `upcoming`,
             STRFTIME('%s', 'now', 'localtime') > `overdue_time` AS `overdue`,
             `status`
         FROM `chores`
@@ -277,6 +287,14 @@ async fn list_chores_impl(
             }
         };
 
+        let upcoming = match row.try_get::<i32, &str>("upcoming") {
+            Ok(upcoming) => upcoming == 1,
+            Err(_) => {
+                tracing::warn!("No upcoming information found for chore \"{}\"", title);
+                continue;
+            }
+        };
+
         let overdue = match row.try_get::<i32, &str>("overdue") {
             Ok(overdue) => overdue == 1,
             Err(_) => {
@@ -299,11 +317,25 @@ async fn list_chores_impl(
             }
         };
 
+        let status = match (status, upcoming, overdue) {
+            (Status::Assigned, false, false) => ApiStatus::Assigned,
+            (Status::Assigned, true, false) => ApiStatus::Upcoming,
+            (Status::Assigned, false, true) => ApiStatus::Overdue,
+            (Status::Assigned, true, true) => {
+                tracing::warn!(
+                    "Chore \"{}\" is both upcoming and overdue, which should be impossible",
+                    title
+                );
+                continue;
+            }
+            (Status::Completed, _, _) => ApiStatus::Completed,
+            (Status::Missed, _, _) => ApiStatus::Missed,
+        };
+
         return_chores.push(ApiChore {
             title: title,
             description,
             expected_completion_time,
-            overdue,
             status,
         });
     }
