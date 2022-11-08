@@ -128,9 +128,12 @@ const createFlash = (flash) => {
     callout.classList.add("callout");
     callout.classList.add("primary");
     callout.setAttribute("data-closeable", "");
-    let content = document.createElement("p");
+    let content = document.createElement("h5");
     content.textContent = flash.contents;
     callout.appendChild(content);
+    let createTime = document.createElement("p");
+    createTime.textContent = "Created at " + (new Date(flash.created_at * 1000)).toLocaleString();
+    callout.appendChild(createTime);
     let button = document.createElement("button");
     button.classList.add("close-button");
     button.setAttribute("aria-label", "Dismiss alert");
