@@ -1,10 +1,29 @@
 <!doctype html>
-<html>
+<html class="no-js" lang="en">
   <head>
-    <link rel="stylesheet" href="/dist/css/foundation.min.css" />
+    <link rel="stylesheet" href="/dist/css/foundation.min.css">
   </head>
 
   <body>
+    <div class="reveal" id="add-flash-modal" data-reveal>
+      <h1>Add new message</h1>
+      <div class="grid-container">
+        <div class="grid-x grid-padding-x">
+          <div class="large-auto cell">
+            <input id="flash-contents" type="text" placeholder="Message...">
+          </div>
+        </div>
+        <div class="grid-x grid-padding-x">
+          <div class="large-auto cell">
+            <button id="add-flash" class="button primary expanded">Add</button>
+          </div>
+        </div>
+        <button class="close-button" data-close aria-label="Close modal" type="button">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+    </div>
+
     <div class="top-bar">
       <div class="top-bar-left">
         <h1 class="menu-text">Chores List</h1>
@@ -16,11 +35,17 @@
         <span class="label warning" id="overdue-chores">overdue</span>
         <span class="label alert" id="missed-chores">missed</span>
         <span class="label success" id="completed-chores">completed</span>
+        <button class="button" data-open="add-flash-modal">Add new message</button>
       </div>
     </div>
 
+    <div id="flashes"></div>
+
     <div id="chores" class="grid-x grid-padding-x grid-padding-y small-up-2 medium-up-4 large-up-6"></div>
 
+    <script src="/dist/js/jquery.js"></script>
+    <script src="/dist/js/what-input.js"></script>
+    <script src="/dist/js/foundation.min.js"></script>
     <script src="/dist/js/index.js"></script>
   </body>
 </html>

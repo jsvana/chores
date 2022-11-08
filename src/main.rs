@@ -103,6 +103,7 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
         };
         let last_update_date = Local.timestamp(last_update, 0);
 
+        // TODO: this is wrong.
         sqlx::query!(
             r#"
             UPDATE `chores`
@@ -374,11 +375,7 @@ struct CompleteChoreResponse {
     error: Option<String>,
 }
 
-async fn complete_chore_impl(
-    params: CompleteChoreParams,
-    pool: Arc<SqlitePool>,
-    _config: Arc<Config>,
-) -> Result<()> {
+async fn complete_chore_impl(params: CompleteChoreParams, pool: Arc<SqlitePool>) -> Result<()> {
     sqlx::query!(
         r#"
         UPDATE `chores`
@@ -400,9 +397,9 @@ async fn complete_chore_impl(
 async fn complete_chore(
     Form(params): Form<CompleteChoreParams>,
     Extension(pool): Extension<Arc<SqlitePool>>,
-    Extension(config): Extension<Arc<Config>>,
+    Extension(_config): Extension<Arc<Config>>,
 ) -> Json<CompleteChoreResponse> {
-    match complete_chore_impl(params, pool, config).await {
+    match complete_chore_impl(params, pool).await {
         Ok(()) => Json(CompleteChoreResponse {
             success: true,
             error: None,
@@ -436,6 +433,179 @@ async fn index() -> impl IntoResponse {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct Flash {
+    id: i64,
+    contents: String,
+    created_at: i32,
+}
+
+async fn get_flashes_impl(pool: Arc<SqlitePool>) -> Result<Vec<Flash>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            `id`,
+            `contents`,
+            CAST(`created_at` AS INTEGER) AS `created_at`
+        FROM `flashes`
+        WHERE
+            `acknowledged` != 1
+        ORDER BY `created_at` ASC
+        "#,
+    )
+    .fetch_all(&*pool)
+    .await?;
+
+    let mut flashes = Vec::new();
+    for row in rows {
+        let id = match row.try_get("id") {
+            Ok(id) => id,
+            Err(_) => {
+                tracing::warn!("Flash missing ID");
+                continue;
+            }
+        };
+        let contents = match row.try_get("contents") {
+            Ok(contents) => contents,
+            Err(_) => {
+                tracing::warn!("Flash missing contents");
+                continue;
+            }
+        };
+        let created_at = match row.try_get("created_at") {
+            Ok(created_at) => created_at,
+            Err(_) => {
+                tracing::warn!("Flash missing creation timestamp");
+                continue;
+            }
+        };
+
+        flashes.push(Flash {
+            id,
+            contents,
+            created_at,
+        });
+    }
+
+    Ok(flashes)
+}
+
+// TODO: make into flattened enum
+#[derive(Debug, Serialize)]
+struct GetFlashResponse {
+    success: bool,
+    error: Option<String>,
+    flashes: Vec<Flash>,
+}
+
+async fn get_flashes(
+    Extension(pool): Extension<Arc<SqlitePool>>,
+    Extension(_config): Extension<Arc<Config>>,
+) -> Json<GetFlashResponse> {
+    match get_flashes_impl(pool).await {
+        Ok(flashes) => Json(GetFlashResponse {
+            flashes,
+            success: true,
+            error: None,
+        }),
+        Err(e) => Json(GetFlashResponse {
+            success: false,
+            flashes: Vec::new(),
+            error: Some(format!("failed to fetch flashes: {}", e)),
+        }),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AddFlashParams {
+    contents: String,
+}
+
+// TODO: make this a common type
+#[derive(Serialize, Debug)]
+struct AddFlashResponse {
+    success: bool,
+    id: Option<i64>,
+    error: Option<String>,
+}
+
+async fn add_flash_impl(params: AddFlashParams, pool: Arc<SqlitePool>) -> Result<i64> {
+    let id = sqlx::query!(
+        "INSERT INTO `flashes` (`contents`) VALUES (?1)",
+        params.contents,
+    )
+    .execute(&*pool)
+    .await?
+    .last_insert_rowid();
+
+    Ok(id)
+}
+
+async fn add_flash(
+    Form(params): Form<AddFlashParams>,
+    Extension(pool): Extension<Arc<SqlitePool>>,
+    Extension(_config): Extension<Arc<Config>>,
+) -> Json<AddFlashResponse> {
+    match add_flash_impl(params, pool).await {
+        Ok(id) => Json(AddFlashResponse {
+            success: true,
+            id: Some(id),
+            error: None,
+        }),
+        Err(e) => Json(AddFlashResponse {
+            success: false,
+            id: None,
+            error: Some(format!("failed to add flash: {}", e)),
+        }),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DismissFlashParams {
+    id: i64,
+}
+
+// TODO: make this a common type
+#[derive(Serialize, Debug)]
+struct DismissFlashResponse {
+    success: bool,
+    error: Option<String>,
+}
+
+async fn dismiss_flash_impl(params: DismissFlashParams, pool: Arc<SqlitePool>) -> Result<()> {
+    sqlx::query!(
+        r#"
+        UPDATE `flashes`
+        SET
+            `acknowledged` = 1
+        WHERE
+            `id` = ?1
+        "#,
+        params.id,
+    )
+    .execute(&*pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn dismiss_flash(
+    Form(params): Form<DismissFlashParams>,
+    Extension(pool): Extension<Arc<SqlitePool>>,
+    Extension(_config): Extension<Arc<Config>>,
+) -> Json<DismissFlashResponse> {
+    match dismiss_flash_impl(params, pool).await {
+        Ok(()) => Json(DismissFlashResponse {
+            success: true,
+            error: None,
+        }),
+        Err(e) => Json(DismissFlashResponse {
+            success: false,
+            error: Some(format!("failed to dismiss flash: {}", e)),
+        }),
+    }
+}
+
 async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
     let serve_dir = get_service(ServeDir::new("dist")).handle_error(handle_error);
 
@@ -444,6 +614,9 @@ async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
         .nest("/dist", serve_dir.clone())
         .route("/api/chores", get(list_chores))
         .route("/api/chores/complete", post(complete_chore))
+        .route("/api/flashes", get(get_flashes))
+        .route("/api/flashes", post(add_flash))
+        .route("/api/flashes/dismiss", post(dismiss_flash))
         .layer(Extension(pool))
         .layer(Extension(config.clone()));
 

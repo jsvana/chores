@@ -123,4 +123,72 @@ const updateChores = async () => {
     await setChores();
     setTimeout(updateChores, 10000);
 };
+const createFlash = (flash) => {
+    let callout = document.createElement("div");
+    callout.classList.add("callout");
+    callout.classList.add("primary");
+    callout.setAttribute("data-closeable", "");
+    let content = document.createElement("p");
+    content.textContent = flash.contents;
+    callout.appendChild(content);
+    let button = document.createElement("button");
+    button.classList.add("close-button");
+    button.setAttribute("aria-label", "Dismiss alert");
+    button.type = "button";
+    button.setAttribute("data-close", "");
+    button.onclick = async () => {
+        const data = new URLSearchParams();
+        data.append("id", flash.id.toString());
+        await fetch("/api/flashes/dismiss", {
+            method: "POST",
+            body: data,
+        });
+        await setFlashes();
+    };
+    let x = document.createElement("span");
+    x.setAttribute("aria-hidden", "true");
+    x.innerHTML = "&times;";
+    button.appendChild(x);
+    callout.appendChild(button);
+    return callout;
+};
+const setFlashes = async () => {
+    let response = await fetch("/api/flashes");
+    let flashes = (await response.json()).flashes;
+    let flashesNode = document.querySelector("#flashes");
+    if (flashesNode == null) {
+        return;
+    }
+    removeAllChildren(flashesNode);
+    for (let flash of flashes) {
+        flashesNode.appendChild(createFlash(flash));
+    }
+};
+const updateFlashes = async () => {
+    await setFlashes();
+    setTimeout(updateFlashes, 10000);
+};
+const setupAddFlashEvent = () => {
+    let addFlashNode = document.querySelector("#add-flash");
+    if (addFlashNode == null) {
+        return;
+    }
+    addFlashNode.onclick = async () => {
+        let messageNode = document.querySelector("#flash-contents");
+        if (messageNode == null) {
+            return;
+        }
+        const contents = messageNode.value;
+        let data = new URLSearchParams();
+        data.append("contents", contents);
+        let response = await fetch("/api/flashes", {
+            method: "POST",
+            body: data,
+        });
+        await setFlashes();
+    };
+};
+$(document).foundation();
+setupAddFlashEvent();
 updateChores();
+updateFlashes();
