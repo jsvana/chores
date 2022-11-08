@@ -245,6 +245,7 @@ const setupAddFlashEvent = (): void => {
   }
 
   addFlashNode.onclick = async (): Promise<void> => {
+    // TODO: clear input and close modal
     let messageNode = document.querySelector("#flash-contents");
     if (messageNode == null) {
       return;

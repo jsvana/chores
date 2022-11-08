@@ -103,13 +103,12 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
         };
         let last_update_date = Local.timestamp(last_update, 0);
 
-        // TODO: this is wrong.
         sqlx::query!(
             r#"
             UPDATE `chores`
             SET `status` = 'missed'
             WHERE
-                CAST(`expected_completion_time` AS INTEGER) < STRFTIME('%s', 'now')
+                CAST(`expiration_time` AS INTEGER) < STRFTIME('%s', 'now')
                 AND `status` = 'assigned'
             "#,
         )
@@ -120,37 +119,47 @@ async fn update_chores(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()>
             let chore_title = title.to_string();
 
             let schedule: Schedule = chore.frequency.parse()?;
+
+            let mut expected_completion_time: Option<i64> = None;
+
             for next_time in schedule.after(&last_update_date) {
+                let next_timestamp = next_time.timestamp();
+                if let Some(time) = expected_completion_time {
+                    let overdue_timestamp = time + overdue_duration.num_seconds();
+
+                    sqlx::query!(
+                        r#"
+                        INSERT OR IGNORE INTO `chores`
+                        (
+                            `title`,
+                            `expected_completion_time`,
+                            `overdue_time`,
+                            `expiration_time`
+                        )
+                        VALUES
+                        (
+                            ?1,
+                            ?2,
+                            ?3,
+                            ?4
+                        )
+                        "#,
+                        chore_title,
+                        time,
+                        overdue_timestamp,
+                        next_timestamp,
+                    )
+                    .execute(&mut txn)
+                    .await?;
+                }
+
+                expected_completion_time = Some(next_timestamp);
+
                 if next_time > lookahead {
                     break;
                 }
 
                 added_chores += 1;
-
-                let expected_timestamp = next_time.timestamp();
-                let overdue_timestamp = (next_time + overdue_duration).timestamp();
-
-                sqlx::query!(
-                    r#"
-                    INSERT OR IGNORE INTO `chores`
-                    (
-                        `title`,
-                        `expected_completion_time`,
-                        `overdue_time`
-                    )
-                    VALUES
-                    (
-                        ?1,
-                        ?2,
-                        ?3
-                    )
-                    "#,
-                    chore_title,
-                    expected_timestamp,
-                    overdue_timestamp,
-                )
-                .execute(&mut txn)
-                .await?;
             }
         }
 
@@ -521,7 +530,6 @@ struct AddFlashParams {
     contents: String,
 }
 
-// TODO: make this a common type
 #[derive(Serialize, Debug)]
 struct AddFlashResponse {
     success: bool,
