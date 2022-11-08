@@ -168,27 +168,30 @@ const updateFlashes = async () => {
     await setFlashes();
     setTimeout(updateFlashes, 10000);
 };
-const setupAddFlashEvent = () => {
-    let addFlashNode = document.querySelector("#add-flash");
-    if (addFlashNode == null) {
+const sendFlash = async () => {
+    let messageNode = document.querySelector("#flash-contents");
+    if (messageNode == null) {
         return;
     }
-    addFlashNode.onclick = async () => {
-        let messageNode = document.querySelector("#flash-contents");
-        if (messageNode == null) {
-            return;
-        }
-        const contents = messageNode.value;
-        let data = new URLSearchParams();
-        data.append("contents", contents);
-        let response = await fetch("/api/flashes", {
-            method: "POST",
-            body: data,
-        });
-        await setFlashes();
-    };
+    const contents = messageNode.value;
+    if (contents === "") {
+        return;
+    }
+    messageNode.value = "";
+    let data = new URLSearchParams();
+    data.append("contents", contents);
+    let response = await fetch("/api/flashes", {
+        method: "POST",
+        body: data,
+    });
+    await setFlashes();
+    $("#add-flash-modal").foundation("close");
+};
+const possiblySendFlash = async (event) => {
+    if (event.key === "Enter") {
+        await sendFlash();
+    }
 };
 $(document).foundation();
-setupAddFlashEvent();
 updateChores();
 updateFlashes();

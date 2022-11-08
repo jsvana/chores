@@ -10,12 +10,12 @@
       <div class="grid-container">
         <div class="grid-x grid-padding-x">
           <div class="large-auto cell">
-            <input id="flash-contents" type="text" placeholder="Message...">
+            <input id="flash-contents" type="text" placeholder="Message..." onkeypress="possiblySendFlash(event)">
           </div>
         </div>
         <div class="grid-x grid-padding-x">
           <div class="large-auto cell">
-            <button id="add-flash" class="button primary expanded">Add</button>
+            <button id="add-flash" class="button primary expanded" onclick="sendFlash()">Add</button>
           </div>
         </div>
         <button class="close-button" data-close aria-label="Close modal" type="button">

@@ -238,35 +238,40 @@ const updateFlashes = async (): Promise<void> => {
   setTimeout(updateFlashes, 10000);
 }
 
-const setupAddFlashEvent = (): void => {
-  let addFlashNode = document.querySelector("#add-flash") as HTMLElement;
-  if (addFlashNode == null) {
+const sendFlash = async (): Promise<void> => {
+  let messageNode = document.querySelector("#flash-contents");
+  if (messageNode == null) {
     return;
   }
 
-  addFlashNode.onclick = async (): Promise<void> => {
-    // TODO: clear input and close modal
-    let messageNode = document.querySelector("#flash-contents");
-    if (messageNode == null) {
-      return;
-    }
+  const contents = (<HTMLInputElement>messageNode).value;
 
-    const contents = (<HTMLInputElement>messageNode).value;
+  if (contents === "") {
+    return;
+  }
 
-    let data = new URLSearchParams();
-    data.append("contents", contents);
+  (<HTMLInputElement>messageNode).value = "";
 
-    let response = await fetch("/api/flashes", {
-      method: "POST",
-      body: data,
-    });
+  let data = new URLSearchParams();
+  data.append("contents", contents);
 
-    await setFlashes();
-  };
+  let response = await fetch("/api/flashes", {
+    method: "POST",
+    body: data,
+  });
+
+  await setFlashes();
+
+  (<any>$("#add-flash-modal")).foundation("close");
+}
+
+const possiblySendFlash = async (event: KeyboardEvent): Promise<void> => {
+  if (event.key === "Enter") {
+    await sendFlash();
+  }
 }
 
 (<any>$(document)).foundation();
 
-setupAddFlashEvent();
 updateChores();
 updateFlashes();
