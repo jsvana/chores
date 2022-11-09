@@ -15,7 +15,7 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, get_service, post};
 use axum::{Extension, Json, Router};
-use chrono::{Duration, Local, TimeZone};
+use chrono::{Datelike, Duration, Local, TimeZone};
 use clap::Parser;
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
@@ -244,7 +244,7 @@ struct ListChoresResponse {
 
 #[derive(Debug, Deserialize)]
 struct ListChoresParams {
-    lookback_days: Option<i64>,
+    lookback_days: Option<u32>,
 }
 
 async fn list_chores_impl(
@@ -252,12 +252,12 @@ async fn list_chores_impl(
     pool: Arc<SqlitePool>,
     config: Arc<Config>,
 ) -> Result<Vec<ApiChore>> {
-    let lookback_days = params.lookback_days.unwrap_or(1);
-    if lookback_days < 1 {
-        return Err(anyhow!("Refusing to look back less than one day"));
-    }
+    let lookback_days = params.lookback_days.unwrap_or(0);
+    let lookback_timestamp = (Local::now() - Duration::days(lookback_days as i64)).timestamp();
 
-    let lookback_timestamp = (Local::now() - Duration::days(lookback_days)).timestamp();
+    let now_date = Local::now().date();
+    let next_day = Local.ymd(now_date.year(), now_date.month(), now_date.day()) + Duration::days(1);
+    let next_day = next_day.and_hms(0, 0, 0);
 
     let rows = sqlx::query(
         r#"
@@ -268,11 +268,14 @@ async fn list_chores_impl(
             STRFTIME('%s', 'now') > CAST(`overdue_time` AS INTEGER) AS `overdue`,
             `status`
         FROM `chores`
-        WHERE CAST(`expected_completion_time` AS INTEGER) > ?1
+        WHERE
+            CAST(`expected_completion_time` AS INTEGER) >= ?1
+            AND CAST(`expected_completion_time` AS INTEGER) < ?2
         ORDER BY `expected_completion_time` ASC
         "#,
     )
     .bind(lookback_timestamp)
+    .bind(next_day.timestamp())
     .fetch_all(&*pool)
     .await?;
 

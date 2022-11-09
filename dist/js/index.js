@@ -1,32 +1,38 @@
 "use strict";
-const fetchChores = async () => {
-    let response = await fetch("/api/chores");
-    return (await response.json()).chores;
-};
-const createChoreCard = (chore) => {
+const createCard = (cardType, title, titleColor, contents) => {
     let cell = document.createElement("div");
     cell.classList.add("cell");
     cell.classList.add("large-auto");
+    cell.classList.add("card-type-" + cardType);
     let card = document.createElement("div");
     card.classList.add("card");
     let cardDivider = document.createElement("div");
     cardDivider.classList.add("card-divider");
     cardDivider.classList.add("callout");
-    if (chore.status === "completed") {
-        cardDivider.classList.add("success");
-    }
-    else if (chore.status === "upcoming") {
-        cardDivider.classList.add("secondary");
-    }
-    else if (chore.status === "missed") {
-        cardDivider.classList.add("alert");
-    }
-    else if (chore.status === "overdue") {
-        cardDivider.classList.add("warning");
+    cardDivider.classList.add(titleColor);
+    if (title instanceof Node) {
+        cardDivider.appendChild(title);
     }
     else {
-        cardDivider.classList.add("primary");
+        let titleNode = document.createElement("h3");
+        titleNode.textContent = title;
+        cardDivider.appendChild(titleNode);
     }
+    card.appendChild(cardDivider);
+    let cardContent = document.createElement("div");
+    cardContent.classList.add("card-section");
+    for (let content of contents) {
+        cardContent.appendChild(content);
+    }
+    card.appendChild(cardContent);
+    cell.appendChild(card);
+    return cell;
+};
+const fetchChores = async () => {
+    let response = await fetch("/api/chores");
+    return (await response.json()).chores;
+};
+const createChoreCard = (chore) => {
     let title = document.createElement("h2");
     if (chore.status === "completed" || chore.status === "missed") {
         let struckOut = document.createElement("s");
@@ -36,23 +42,36 @@ const createChoreCard = (chore) => {
     else {
         title.textContent = chore.title;
     }
-    cardDivider.appendChild(title);
-    card.appendChild(cardDivider);
-    let cardContent = document.createElement("div");
-    cardContent.classList.add("card-section");
+    let titleColor = "secondary";
+    if (chore.status === "completed") {
+        titleColor = "success";
+    }
+    else if (chore.status === "upcoming") {
+        titleColor = "secondary";
+    }
+    else if (chore.status === "missed") {
+        titleColor = "alert";
+    }
+    else if (chore.status === "overdue") {
+        titleColor = "warning";
+    }
+    else {
+        titleColor = "primary";
+    }
+    let contents = [];
     let choreStatusText = "Status: " + chore.status;
     let choreStatus = document.createElement("p");
     choreStatus.textContent = choreStatusText;
-    cardContent.appendChild(choreStatus);
+    contents.push(choreStatus);
     let expectedDate = new Date(chore.expected_completion_time * 1000);
     let expectedTime = document.createElement("p");
     let expectedTimeBold = document.createElement("strong");
     expectedTimeBold.textContent = "Due date: " + expectedDate.toLocaleString();
     expectedTime.appendChild(expectedTimeBold);
-    cardContent.appendChild(expectedTime);
+    contents.push(expectedTime);
     let description = document.createElement("p");
     description.textContent = chore.description;
-    cardContent.appendChild(description);
+    contents.push(description);
     if (chore.status === "assigned" || chore.status === "overdue") {
         let completeButton = document.createElement("button");
         completeButton.type = "button";
@@ -71,23 +90,20 @@ const createChoreCard = (chore) => {
             });
             await setChores();
         };
-        cardContent.appendChild(completeButton);
+        contents.push(completeButton);
     }
-    card.appendChild(cardContent);
-    cell.appendChild(card);
-    return cell;
+    return createCard("chore", title, titleColor, contents);
 };
-const removeAllChildren = (parent) => {
-    while (parent.firstChild) {
-        parent.removeChild(parent.firstChild);
-    }
+const removeCardsOfType = (parent, cardType) => {
+    const className = "card-type-" + cardType;
+    parent.replaceChildren(...[...parent.children].filter(el => !el.classList.contains("card-type-" + cardType)));
 };
 const CHORE_FINAL_STATES = ["completed", "missed"];
 const setChores = async () => {
     var _a;
     let chores = await fetchChores();
-    let choresNode = document.querySelector("#chores");
-    if (choresNode == null) {
+    let cardsNode = document.querySelector("#cards");
+    if (cardsNode == null) {
         return;
     }
     chores.sort((a, b) => {
@@ -99,7 +115,7 @@ const setChores = async () => {
         }
         return a.expected_completion_time - b.expected_completion_time;
     });
-    removeAllChildren(choresNode);
+    removeCardsOfType(cardsNode, "chore");
     let counts = new Map([
         ["assigned", 0],
         ["upcoming", 0],
@@ -108,9 +124,10 @@ const setChores = async () => {
         ["completed", 0],
     ]);
     for (let chore of chores) {
-        choresNode.appendChild(createChoreCard(chore));
+        cardsNode.appendChild(createChoreCard(chore));
         counts.set(chore.status, ((_a = counts.get(chore.status)) !== null && _a !== void 0 ? _a : 0) + 1);
     }
+    sortCards(cardsNode);
     for (let [key, value] of counts) {
         let countSpan = document.querySelector("#" + key + "-chores");
         if (countSpan == null) {
@@ -124,48 +141,27 @@ const updateChores = async () => {
     setTimeout(updateChores, 10000);
 };
 const createFlash = (flash) => {
-    let callout = document.createElement("div");
-    callout.classList.add("callout");
-    callout.classList.add("primary");
-    callout.setAttribute("data-closeable", "");
+    let contents = [];
     let content = document.createElement("h5");
     content.textContent = flash.contents;
-    callout.appendChild(content);
+    contents.push(content);
     let createTime = document.createElement("p");
     createTime.textContent = "Created at " + (new Date(flash.created_at * 1000)).toLocaleString();
-    callout.appendChild(createTime);
-    let button = document.createElement("button");
-    button.classList.add("close-button");
-    button.setAttribute("aria-label", "Dismiss alert");
-    button.type = "button";
-    button.setAttribute("data-close", "");
-    button.onclick = async () => {
-        const data = new URLSearchParams();
-        data.append("id", flash.id.toString());
-        await fetch("/api/flashes/dismiss", {
-            method: "POST",
-            body: data,
-        });
-        await setFlashes();
-    };
-    let x = document.createElement("span");
-    x.setAttribute("aria-hidden", "true");
-    x.innerHTML = "&times;";
-    button.appendChild(x);
-    callout.appendChild(button);
-    return callout;
+    contents.push(createTime);
+    return createCard("flash", "Message", "primary", contents);
 };
 const setFlashes = async () => {
     let response = await fetch("/api/flashes");
     let flashes = (await response.json()).flashes;
-    let flashesNode = document.querySelector("#flashes");
-    if (flashesNode == null) {
+    let cardsNode = document.querySelector("#cards");
+    if (cardsNode == null) {
         return;
     }
-    removeAllChildren(flashesNode);
+    removeCardsOfType(cardsNode, "flash");
     for (let flash of flashes) {
-        flashesNode.appendChild(createFlash(flash));
+        cardsNode.appendChild(createFlash(flash));
     }
+    sortCards(cardsNode);
 };
 const updateFlashes = async () => {
     await setFlashes();
@@ -196,45 +192,64 @@ const possiblySendFlash = async (event) => {
     }
 };
 const createMetarCard = (station, metar) => {
-    let cell = document.createElement("div");
-    cell.classList.add("cell");
-    cell.classList.add("large-auto");
-    let card = document.createElement("div");
-    card.classList.add("card");
-    let cardDivider = document.createElement("div");
-    cardDivider.classList.add("card-divider");
-    cardDivider.classList.add("callout");
-    cardDivider.classList.add("primary");
-    let title = document.createElement("h3");
-    title.textContent = station;
-    cardDivider.appendChild(title);
-    card.appendChild(cardDivider);
-    let cardContent = document.createElement("div");
-    cardContent.classList.add("card-section");
     let temperatureText = document.createElement("p");
     temperatureText.textContent = "Temperature: " + metar.temperature + "\u00b0C";
-    cardContent.appendChild(temperatureText);
     let pressureText = document.createElement("p");
     pressureText.textContent = "Pressure: " + metar.pressure + " hPa";
-    cardContent.appendChild(pressureText);
     let metarText = document.createElement("p");
     metarText.textContent = metar.metar;
-    cardContent.appendChild(metarText);
-    card.appendChild(cardContent);
-    cell.appendChild(card);
-    return cell;
+    return createCard("metar", station, "primary", [temperatureText, pressureText, metarText]);
 };
 const setMetars = async () => {
     let response = await fetch("/api/metars");
     let stations = (await response.json()).stations;
-    let metarsNode = document.querySelector("#metars");
-    if (metarsNode == null) {
+    let cardsNode = document.querySelector("#cards");
+    if (cardsNode == null) {
         return;
     }
-    removeAllChildren(metarsNode);
+    removeCardsOfType(cardsNode, "metar");
     for (let station in stations) {
-        metarsNode.appendChild(createMetarCard(station, stations[station]));
+        cardsNode.appendChild(createMetarCard(station, stations[station]));
     }
+    sortCards(cardsNode);
+};
+const sortCards = (parent) => {
+    const PRIORITIES = new Map([
+        ["card-type-flash", 0],
+        ["card-type-metar", 1],
+        ["card-type-chore", 2],
+    ]);
+    [...parent.children]
+        .sort((aElement, bElement) => {
+        const a = aElement;
+        const b = bElement;
+        const aType = [...a.classList.values()].find(c => c.startsWith('card-type-'));
+        const bType = [...b.classList.values()].find(c => c.startsWith('card-type-'));
+        if (aType == null) {
+            return -1;
+        }
+        if (bType == null) {
+            return 1;
+        }
+        const aPriority = PRIORITIES.get(aType);
+        const bPriority = PRIORITIES.get(bType);
+        if (aPriority == null) {
+            return -1;
+        }
+        if (bPriority == null) {
+            return 1;
+        }
+        if (aPriority > bPriority) {
+            return 1;
+        }
+        else if (aPriority < bPriority) {
+            return -1;
+        }
+        else {
+            return 0;
+        }
+    })
+        .forEach(child => parent.appendChild(child));
 };
 const updateMetars = async () => {
     await setMetars();
