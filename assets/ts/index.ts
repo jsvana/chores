@@ -73,7 +73,7 @@ const createChoreCard = (chore: Chore): Node => {
   description.textContent = chore.description;
   cardContent.appendChild(description);
 
-  if (chore.status === "assigned") {
+  if (chore.status === "assigned" || chore.status === "overdue") {
     let completeButton = document.createElement("button");
     completeButton.type = "button";
     completeButton.classList.add("button");
@@ -274,7 +274,88 @@ const possiblySendFlash = async (event: KeyboardEvent): Promise<void> => {
   }
 }
 
+type Weather = {
+  conditions: string[];
+  intensity: string;
+};
+
+type StationMetar = {
+  metar: string;
+  pressure?: number;
+  temperature?: number;
+  weather: Weather[];
+};
+
+type GetMetarsResponse = {
+  stations: Map<string, StationMetar>;
+};
+
+const createMetarCard = (station: string, metar: StationMetar): Node => {
+  let cell = document.createElement("div");
+  cell.classList.add("cell");
+  cell.classList.add("large-auto");
+
+  let card = document.createElement("div");
+  card.classList.add("card");
+
+  let cardDivider = document.createElement("div");
+  cardDivider.classList.add("card-divider");
+
+  cardDivider.classList.add("callout");
+  cardDivider.classList.add("primary");
+
+  let title = document.createElement("h3");
+  title.textContent = station;
+
+  cardDivider.appendChild(title);
+  card.appendChild(cardDivider);
+
+  let cardContent = document.createElement("div");
+  cardContent.classList.add("card-section");
+
+  let temperatureText = document.createElement("p");
+  temperatureText.textContent = "Temperature: " + metar.temperature + "\u00b0C";
+  cardContent.appendChild(temperatureText);
+
+  let pressureText = document.createElement("p");
+  pressureText.textContent = "Pressure: " + metar.pressure + " hPa";
+  cardContent.appendChild(pressureText);
+
+  let metarText = document.createElement("p");
+  metarText.textContent = metar.metar;
+  cardContent.appendChild(metarText);
+
+  card.appendChild(cardContent);
+
+  cell.appendChild(card);
+
+  return cell;
+}
+
+const setMetars = async (): Promise<void> => {
+  let response = await fetch("/api/metars");
+  let stations = (await response.json()).stations;
+
+  let metarsNode = document.querySelector("#metars");
+  if (metarsNode == null) {
+    return;
+  }
+
+  removeAllChildren(metarsNode);
+
+  for (let station in stations) {
+    metarsNode.appendChild(createMetarCard(station, stations[station]));
+  }
+}
+
+const updateMetars = async (): Promise<void> => {
+  await setMetars();
+
+  setTimeout(updateMetars, 10000);
+}
+
 (<any>$(document)).foundation();
 
 updateChores();
 updateFlashes();
+updateMetars();

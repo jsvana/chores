@@ -13,5 +13,6 @@
       "frequency": "0 0 9 */3 * * *"
     }
   },
+  "metar_stations": ["KDEN"],
   "overdue_time": "4h"
 }

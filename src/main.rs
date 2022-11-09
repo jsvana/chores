@@ -1,3 +1,5 @@
+mod weather;
+
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::net::SocketAddr;
@@ -20,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Acquire, Row, SqlitePool};
 use tokio::try_join;
 use tower_http::services::ServeDir;
+
+use crate::weather::{build_metar_response, StationMetar};
 
 const INDEX_PATH: &'static str = "./assets/html/index.html";
 
@@ -46,6 +50,7 @@ struct Config {
     #[serde(default = "default_port")]
     port: u16,
     chores: HashMap<String, Chore>,
+    metar_stations: Vec<String>,
     #[serde(with = "humantime_serde")]
     overdue_time: StdDuration,
     #[serde(with = "humantime_serde", default = "one_day")]
@@ -614,6 +619,20 @@ async fn dismiss_flash(
     }
 }
 
+#[derive(Debug, Serialize)]
+struct GetMetarsResponse {
+    stations: HashMap<String, StationMetar>,
+}
+
+async fn get_metars(
+    Extension(_pool): Extension<Arc<SqlitePool>>,
+    Extension(config): Extension<Arc<Config>>,
+) -> Json<GetMetarsResponse> {
+    Json(GetMetarsResponse {
+        stations: build_metar_response(&config.metar_stations).await,
+    })
+}
+
 async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
     let serve_dir = get_service(ServeDir::new("dist")).handle_error(handle_error);
 
@@ -625,6 +644,7 @@ async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
         .route("/api/flashes", get(get_flashes))
         .route("/api/flashes", post(add_flash))
         .route("/api/flashes/dismiss", post(dismiss_flash))
+        .route("/api/metars", get(get_metars))
         .layer(Extension(pool))
         .layer(Extension(config.clone()));
 
