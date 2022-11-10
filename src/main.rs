@@ -252,7 +252,7 @@ async fn list_chores_impl(
     pool: Arc<SqlitePool>,
     config: Arc<Config>,
 ) -> Result<Vec<ApiChore>> {
-    let lookback_days = params.lookback_days.unwrap_or(0);
+    let lookback_days = params.lookback_days.unwrap_or(1);
     let lookback_timestamp = (Local::now() - Duration::days(lookback_days as i64)).timestamp();
 
     let now_date = Local::now().date();

@@ -2,7 +2,6 @@
 const createCard = (cardType, title, titleColor, contents) => {
     let cell = document.createElement("div");
     cell.classList.add("cell");
-    cell.classList.add("large-auto");
     cell.classList.add("card-type-" + cardType);
     let card = document.createElement("div");
     card.classList.add("card");
@@ -33,7 +32,7 @@ const fetchChores = async () => {
     return (await response.json()).chores;
 };
 const createChoreCard = (chore) => {
-    let title = document.createElement("h2");
+    let title = document.createElement("h3");
     if (chore.status === "completed" || chore.status === "missed") {
         let struckOut = document.createElement("s");
         struckOut.textContent = chore.title;
@@ -107,13 +106,33 @@ const setChores = async () => {
         return;
     }
     chores.sort((a, b) => {
-        if (CHORE_FINAL_STATES.includes(a.status) && b.status === "assigned") {
-            return 1;
+        if (a.status == b.status) {
+            return a.expected_completion_time - b.expected_completion_time;
         }
-        if (CHORE_FINAL_STATES.includes(b.status) && a.status === "assigned") {
+        const PRIORITIES = new Map([
+            ["overdue", 0],
+            ["assigned", 1],
+            ["upcoming", 2],
+            ["missed", 3],
+            ["completed", 4],
+        ]);
+        const aPriority = PRIORITIES.get(a.status);
+        const bPriority = PRIORITIES.get(b.status);
+        if (aPriority == null) {
             return -1;
         }
-        return a.expected_completion_time - b.expected_completion_time;
+        if (bPriority == null) {
+            return 1;
+        }
+        if (aPriority > bPriority) {
+            return 1;
+        }
+        else if (aPriority < bPriority) {
+            return -1;
+        }
+        else {
+            return 0;
+        }
     });
     removeCardsOfType(cardsNode, "chore");
     let counts = new Map([
@@ -207,9 +226,10 @@ const setMetars = async () => {
     if (cardsNode == null) {
         return;
     }
+    let stationNames = Object.keys(stations).sort();
     removeCardsOfType(cardsNode, "metar");
-    for (let station in stations) {
-        cardsNode.appendChild(createMetarCard(station, stations[station]));
+    for (let stationName of stationNames) {
+        cardsNode.appendChild(createMetarCard(stationName, stations[stationName]));
     }
     sortCards(cardsNode);
 };

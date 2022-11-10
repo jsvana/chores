@@ -14,7 +14,6 @@ type ListChoresResponse = {
 const createCard = (cardType: string, title: string | Node, titleColor: string, contents: Node[]): Node => {
   let cell = document.createElement("div");
   cell.classList.add("cell");
-  cell.classList.add("large-auto");
   cell.classList.add("card-type-" + cardType);
 
   let card = document.createElement("div");
@@ -56,7 +55,7 @@ const fetchChores = async (): Promise<Chore[]> => {
 }
 
 const createChoreCard = (chore: Chore): Node => {
-  let title = document.createElement("h2");
+  let title = document.createElement("h3");
   if (chore.status === "completed" || chore.status === "missed") {
     let struckOut = document.createElement("s");
     struckOut.textContent = chore.title;
@@ -140,15 +139,34 @@ const setChores = async (): Promise<void> => {
   }
 
   chores.sort((a: Chore, b: Chore): number => {
-    if (CHORE_FINAL_STATES.includes(a.status) && b.status === "assigned") {
+    if (a.status == b.status) {
+      return a.expected_completion_time - b.expected_completion_time;
+    }
+
+    const PRIORITIES: Map<string, number> = new Map([
+      ["overdue", 0],
+      ["assigned", 1],
+      ["upcoming", 2],
+      ["missed", 3],
+      ["completed", 4],
+    ]);
+
+    const aPriority = PRIORITIES.get(a.status);
+    const bPriority = PRIORITIES.get(b.status);
+    if (aPriority == null) {
+      return -1;
+    }
+    if (bPriority == null) {
       return 1;
     }
 
-    if (CHORE_FINAL_STATES.includes(b.status) && a.status === "assigned") {
+    if (aPriority > bPriority) {
+      return 1;
+    } else if (aPriority < bPriority) {
       return -1;
+    } else {
+      return 0;
     }
-
-    return a.expected_completion_time - b.expected_completion_time;
   });
 
   removeCardsOfType(<HTMLElement>cardsNode, "chore");
@@ -304,10 +322,12 @@ const setMetars = async (): Promise<void> => {
     return;
   }
 
+  let stationNames = Object.keys(stations).sort();
+
   removeCardsOfType(<HTMLElement>cardsNode, "metar");
 
-  for (let station in stations) {
-    cardsNode.appendChild(createMetarCard(station, stations[station]));
+  for (let stationName of stationNames) {
+    cardsNode.appendChild(createMetarCard(stationName, stations[stationName]));
   }
 
   sortCards(<HTMLElement>cardsNode);
