@@ -221,8 +221,30 @@ const createFlash = (flash: Flash): Node => {
   contents.push(content);
 
   let createTime = document.createElement("p");
+  createTime.style.fontSize = "0.8em";
   createTime.textContent = "Created at " + (new Date(flash.created_at * 1000)).toLocaleString();
   contents.push(createTime);
+
+  let dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.classList.add("button");
+  dismiss.classList.add("success");
+  dismiss.classList.add("expanded");
+  dismiss.classList.add("large");
+  dismiss.textContent = "Dismiss";
+  dismiss.onclick = async (): Promise<void> => {
+      const data = new URLSearchParams();
+      data.append("id", flash.id.toString());
+
+      await fetch("/api/flashes/dismiss", {
+        method: "POST",
+        body: data,
+      });
+
+      await setFlashes();
+  };
+
+  contents.push(dismiss);
 
   return createCard("flash", "Message", "primary", contents);
 }

@@ -271,6 +271,7 @@ async fn list_chores_impl(
         WHERE
             CAST(`expected_completion_time` AS INTEGER) >= ?1
             AND CAST(`expected_completion_time` AS INTEGER) < ?2
+            AND `status` != 'completed'
         ORDER BY `expected_completion_time` ASC
         "#,
     )
