@@ -21,8 +21,6 @@ const createCard = (cardType: string, title: string | Node, titleColor: string, 
 
   let cardDivider = document.createElement("div");
   cardDivider.classList.add("card-divider");
-
-  cardDivider.classList.add("callout");
   cardDivider.classList.add(titleColor);
 
   if (title instanceof Node) {
@@ -171,29 +169,11 @@ const setChores = async (): Promise<void> => {
 
   removeCardsOfType(<HTMLElement>cardsNode, "chore");
 
-  let counts: Map<string, number> = new Map([
-    ["assigned", 0],
-    ["upcoming", 0],
-    ["overdue", 0],
-    ["missed", 0],
-    ["completed", 0],
-  ]);
-
   for (let chore of chores) {
     cardsNode.appendChild(createChoreCard(chore));
-    counts.set(chore.status, (counts.get(chore.status) ?? 0) + 1);
   }
 
   sortCards(<HTMLElement>cardsNode);
-
-  for (let [key, value] of counts) {
-    let countSpan = document.querySelector("#" + key + "-chores");
-    if (countSpan == null) {
-      return;
-    }
-
-    countSpan.textContent = value + " " + key;
-  }
 }
 
 const updateChores = async (): Promise<void> => {
@@ -228,7 +208,7 @@ const createFlash = (flash: Flash): Node => {
   let dismiss = document.createElement("button");
   dismiss.type = "button";
   dismiss.classList.add("button");
-  dismiss.classList.add("success");
+  dismiss.classList.add("primary");
   dismiss.classList.add("expanded");
   dismiss.classList.add("large");
   dismiss.textContent = "Dismiss";
@@ -246,7 +226,7 @@ const createFlash = (flash: Flash): Node => {
 
   contents.push(dismiss);
 
-  return createCard("flash", "Message", "primary", contents);
+  return createCard("flash", "Message", "success", contents);
 }
 
 const setFlashes = async (): Promise<void> => {
