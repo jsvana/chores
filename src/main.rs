@@ -11,7 +11,7 @@ use anyhow::{anyhow, Result};
 use axum::body;
 use axum::body::Full;
 use axum::extract::{Form, Query};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, get_service, post};
 use axum::{Extension, Json, Router};
@@ -21,6 +21,7 @@ use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use sqlx::{Acquire, Row, SqlitePool};
 use tokio::try_join;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
 use crate::weather::{build_metar_response, StationMetar};
@@ -640,6 +641,12 @@ async fn get_metars(
 async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
     let serve_dir = get_service(ServeDir::new("dist")).handle_error(handle_error);
 
+    let cors = CorsLayer::new()
+        // allow `GET` and `POST` when accessing the resource
+        .allow_methods(vec![Method::GET, Method::POST])
+        // allow requests from any origin
+        .allow_origin(Any);
+
     let app = Router::new()
         .route("/", get(index))
         .nest("/dist", serve_dir.clone())
@@ -650,7 +657,8 @@ async fn serve(pool: Arc<SqlitePool>, config: Arc<Config>) -> Result<()> {
         .route("/api/flashes/dismiss", post(dismiss_flash))
         .route("/api/metars", get(get_metars))
         .layer(Extension(pool))
-        .layer(Extension(config.clone()));
+        .layer(Extension(config.clone()))
+        .layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::debug!("listening on {}", addr);
